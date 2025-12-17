@@ -28,3 +28,8 @@ func NewUser(username, passwordHash string) *User {
 	}
 }
 
+// GetID returns the user's ID (implements Entity interface for generic repository).
+func (u *User) GetID() uuid.UUID {
+	return u.ID
+}
+

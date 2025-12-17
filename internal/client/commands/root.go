@@ -45,8 +45,8 @@ ensuring that only you can access your sensitive information.`,
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 
-		// Initialize API client
-		apiClient = api.NewClient(cfg.ServerURL, cfg.Timeout)
+		// Initialize API client with functional options
+		apiClient = api.NewClient(cfg.ServerURL, api.WithTimeout(cfg.Timeout))
 
 		// Initialize storage (skip for register command)
 		if cmd.Name() != "register" {

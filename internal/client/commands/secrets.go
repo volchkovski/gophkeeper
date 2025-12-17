@@ -248,7 +248,7 @@ var listCmd = &cobra.Command{
 			}
 			fmt.Printf("%-36s %-15s %-30s %s\n",
 				secret.ID.String()[:8]+"...",
-				secret.Type,
+				secret.Type.String(),
 				truncateString(secret.Name, 30),
 				syncStatus,
 			)
@@ -303,7 +303,7 @@ var editCmd = &cobra.Command{
 		}
 
 		// Edit based on type
-		switch secret.Type {
+		switch secret.Type.String() {
 		case TypeLoginPassword:
 			return editLoginPassword(secret)
 		case TypeText:
@@ -311,7 +311,7 @@ var editCmd = &cobra.Command{
 		case TypeCard:
 			return editCard(secret)
 		default:
-			return fmt.Errorf("unsupported secret type for editing: %s", secret.Type)
+			return fmt.Errorf("unsupported secret type for editing: %s", secret.Type.String())
 		}
 	},
 }
@@ -391,7 +391,7 @@ var exportCmd = &cobra.Command{
 		}
 
 		// Only binary secrets can be exported as files
-		if secret.Type != TypeBinary {
+		if secret.Type.String() != TypeBinary {
 			return fmt.Errorf("only binary secrets can be exported to files")
 		}
 
@@ -456,7 +456,7 @@ func saveSecret(name, secretType string, data, metadata interface{}) error {
 	// Create secret
 	secret := &storage.SecretData{
 		ID:            uuid.New(),
-		Type:          secretType,
+		Type:          storage.NewSecretType(secretType),
 		Name:          name,
 		EncryptedData: encryptedData,
 		Metadata:      string(metadataJSON),
@@ -487,13 +487,13 @@ func saveSecret(name, secretType string, data, metadata interface{}) error {
 // displaySecret decrypts and displays a secret.
 func displaySecret(secret *storage.SecretData) error {
 	fmt.Printf("\n=== %s ===\n", secret.Name)
-	fmt.Printf("Type: %s\n", secret.Type)
+	fmt.Printf("Type: %s\n", secret.Type.String())
 	fmt.Printf("Version: %d\n", secret.Version)
 	fmt.Printf("Created: %s\n", secret.CreatedAt.Format(time.RFC3339))
 	fmt.Printf("Updated: %s\n", secret.UpdatedAt.Format(time.RFC3339))
 	fmt.Println()
 
-	switch secret.Type {
+	switch secret.Type.String() {
 	case TypeLoginPassword:
 		var data models.LoginPassword
 		if err := store.DecryptData(secret.EncryptedData, &data); err != nil {

@@ -4,13 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
+
 	apperrors "github.com/volchkovski/gophkeeper/internal/common/errors"
 	"github.com/volchkovski/gophkeeper/internal/server/models"
 	"github.com/volchkovski/gophkeeper/internal/server/repository"
 	"github.com/volchkovski/gophkeeper/pkg/logger"
+)
+
+const (
+	// syncConcurrencyLimit limits the number of concurrent operations during sync.
+	syncConcurrencyLimit = 10
 )
 
 // secretService implements SecretService interface.
@@ -153,14 +161,16 @@ func (s *secretService) List(ctx context.Context, userID uuid.UUID) ([]*models.S
 	return s.secretRepo.FindByUserID(ctx, userID)
 }
 
+// syncItem represents the result of processing a single client secret during sync.
+type syncItem struct {
+	updated  *models.SecretData
+	conflict *Conflict
+}
+
 // Sync synchronizes secrets between client and server.
 // Strategy: Last-Write-Wins based on version number.
+// Uses errgroup with SetLimit for parallel processing of secrets.
 func (s *secretService) Sync(ctx context.Context, userID uuid.UUID, clientSecrets []*models.SecretData) (*SyncResult, error) {
-	result := &SyncResult{
-		UpdatedSecrets: make([]*models.SecretData, 0),
-		Conflicts:      make([]*Conflict, 0),
-	}
-
 	// Get all server secrets for the user
 	serverSecrets, err := s.secretRepo.FindByUserIDIncludeDeleted(ctx, userID)
 	if err != nil {
@@ -173,59 +183,60 @@ func (s *secretService) Sync(ctx context.Context, userID uuid.UUID, clientSecret
 		serverSecretsMap[secret.ID] = secret
 	}
 
-	// Process client secrets
+	// Mutex for protecting shared data during parallel processing
+	var mu sync.Mutex
+	processedIDs := make(map[uuid.UUID]struct{})
+	var results []syncItem
+
+	// Use errgroup with limit for parallel processing
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(syncConcurrencyLimit)
+
+	// Process client secrets in parallel
 	for _, clientSecret := range clientSecrets {
-		// Ensure the secret belongs to the user
+		clientSecret := clientSecret // capture for goroutine
 		clientSecret.UserID = userID
 
-		serverSecret, exists := serverSecretsMap[clientSecret.ID]
-
-		if !exists {
-			// New secret from client
-			if err := s.secretRepo.Create(ctx, clientSecret); err != nil {
-				if errors.Is(err, apperrors.ErrSecretNameExists) {
-					// Name conflict - add to conflicts
-					existingByName, _ := s.secretRepo.FindByUserIDAndName(ctx, userID, clientSecret.Name)
-					if existingByName != nil {
-						result.Conflicts = append(result.Conflicts, &Conflict{
-							ClientVersion: clientSecret,
-							ServerVersion: existingByName,
-						})
-					}
-					continue
-				}
-				return nil, fmt.Errorf("failed to create secret during sync: %w", err)
+		g.Go(func() error {
+			item, err := s.processClientSecret(gCtx, userID, clientSecret, serverSecretsMap)
+			if err != nil {
+				return err
 			}
-			continue
+
+			mu.Lock()
+			defer mu.Unlock()
+			if item != nil {
+				results = append(results, *item)
+			}
+			processedIDs[clientSecret.ID] = struct{}{}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Build result from collected items
+	result := &SyncResult{
+		UpdatedSecrets: make([]*models.SecretData, 0),
+		Conflicts:      make([]*Conflict, 0),
+	}
+
+	for _, item := range results {
+		if item.updated != nil {
+			result.UpdatedSecrets = append(result.UpdatedSecrets, item.updated)
 		}
-
-		// Secret exists on server - compare versions
-		if clientSecret.Version > serverSecret.Version {
-			// Client has newer version - update server
-			clientSecret.IncrementVersion()
-			if err := s.secretRepo.Update(ctx, clientSecret); err != nil {
-				return nil, fmt.Errorf("failed to update secret during sync: %w", err)
-			}
-		} else if clientSecret.Version < serverSecret.Version {
-			// Server has newer version - add to result
-			result.UpdatedSecrets = append(result.UpdatedSecrets, serverSecret)
-		} else {
-			// Same version - check timestamps for conflict
-			if !clientSecret.UpdatedAt.Equal(serverSecret.UpdatedAt) {
-				result.Conflicts = append(result.Conflicts, &Conflict{
-					ClientVersion: clientSecret,
-					ServerVersion: serverSecret,
-				})
-			}
+		if item.conflict != nil {
+			result.Conflicts = append(result.Conflicts, item.conflict)
 		}
-
-		// Mark as processed
-		delete(serverSecretsMap, clientSecret.ID)
 	}
 
 	// Remaining server secrets are new to the client
-	for _, serverSecret := range serverSecretsMap {
-		result.UpdatedSecrets = append(result.UpdatedSecrets, serverSecret)
+	for id, serverSecret := range serverSecretsMap {
+		if _, processed := processedIDs[id]; !processed {
+			result.UpdatedSecrets = append(result.UpdatedSecrets, serverSecret)
+		}
 	}
 
 	s.logger.Info("sync completed",
@@ -235,6 +246,63 @@ func (s *secretService) Sync(ctx context.Context, userID uuid.UUID, clientSecret
 	)
 
 	return result, nil
+}
+
+// processClientSecret processes a single client secret during sync.
+// Returns a syncItem with either an updated secret or a conflict, or nil if no action needed.
+func (s *secretService) processClientSecret(
+	ctx context.Context,
+	userID uuid.UUID,
+	clientSecret *models.SecretData,
+	serverSecretsMap map[uuid.UUID]*models.SecretData,
+) (*syncItem, error) {
+	serverSecret, exists := serverSecretsMap[clientSecret.ID]
+
+	if !exists {
+		// New secret from client
+		if err := s.secretRepo.Create(ctx, clientSecret); err != nil {
+			if errors.Is(err, apperrors.ErrSecretNameExists) {
+				// Name conflict - add to conflicts
+				existingByName, _ := s.secretRepo.FindByUserIDAndName(ctx, userID, clientSecret.Name)
+				if existingByName != nil {
+					return &syncItem{
+						conflict: &Conflict{
+							ClientVersion: clientSecret,
+							ServerVersion: existingByName,
+						},
+					}, nil
+				}
+				return nil, nil
+			}
+			return nil, fmt.Errorf("failed to create secret during sync: %w", err)
+		}
+		return nil, nil
+	}
+
+	// Secret exists on server - compare versions
+	if clientSecret.Version > serverSecret.Version {
+		// Client has newer version - update server
+		clientSecret.IncrementVersion()
+		if err := s.secretRepo.Update(ctx, clientSecret); err != nil {
+			return nil, fmt.Errorf("failed to update secret during sync: %w", err)
+		}
+		return nil, nil
+	} else if clientSecret.Version < serverSecret.Version {
+		// Server has newer version - add to result
+		return &syncItem{updated: serverSecret}, nil
+	}
+
+	// Same version - check timestamps for conflict
+	if !clientSecret.UpdatedAt.Equal(serverSecret.UpdatedAt) {
+		return &syncItem{
+			conflict: &Conflict{
+				ClientVersion: clientSecret,
+				ServerVersion: serverSecret,
+			},
+		}, nil
+	}
+
+	return nil, nil
 }
 
 // validateSecret validates secret data.

@@ -32,14 +32,19 @@ func NewTestStorage(t *testing.T) *TestStorage {
 	db, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
 
-	s := &Storage{
-		db:           db,
-		tokenFile:    filepath.Join(tmpDir, "token"),
-		keychainFile: filepath.Join(tmpDir, "keychain"),
-	}
+	tokenStore := NewTokenStore(filepath.Join(tmpDir, "token"))
+	keyStore := NewKeyStore(filepath.Join(tmpDir, "keychain"))
+	secretStore := NewSecretStore(db)
 
-	err = s.initDB()
+	err = secretStore.initDB()
 	require.NoError(t, err)
+
+	s := &Storage{
+		db:          db,
+		TokenStore:  tokenStore,
+		KeyStore:    keyStore,
+		SecretStore: secretStore,
+	}
 
 	return &TestStorage{
 		Storage: s,
@@ -146,7 +151,7 @@ func TestStorage_MasterKey(t *testing.T) {
 		key := []byte("0123456789abcdef0123456789abcdef")
 		ts2.SetMasterKey(key)
 
-		assert.Equal(t, key, ts2.masterKey)
+		assert.Equal(t, key, ts2.KeyStore.GetMasterKey())
 	})
 }
 
@@ -161,7 +166,7 @@ func TestStorage_Secret(t *testing.T) {
 		secret := &SecretData{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "login_password",
+			Type:          NewSecretType("login_password"),
 			Name:          "test-secret",
 			EncryptedData: []byte("encrypted-data"),
 			Metadata:      "test metadata",
@@ -189,7 +194,7 @@ func TestStorage_Secret(t *testing.T) {
 		secret := &SecretData{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "unique-name",
 			EncryptedData: []byte("data"),
 			Version:       1,
@@ -219,7 +224,7 @@ func TestStorage_Secret(t *testing.T) {
 			secret := &SecretData{
 				ID:            uuid.New(),
 				UserID:        userID,
-				Type:          "text",
+				Type:          NewSecretType("text"),
 				Name:          "secret-" + string(rune('a'+i)),
 				EncryptedData: []byte("data"),
 				Version:       1,
@@ -239,7 +244,7 @@ func TestStorage_Secret(t *testing.T) {
 		secret := &SecretData{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "to-update",
 			EncryptedData: []byte("original"),
 			Version:       1,
@@ -269,7 +274,7 @@ func TestStorage_Secret(t *testing.T) {
 		secret := &SecretData{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "deleted-secret",
 			EncryptedData: []byte("data"),
 			Version:       1,
@@ -297,7 +302,7 @@ func TestStorage_DeleteSecret(t *testing.T) {
 	secret := &SecretData{
 		ID:            uuid.New(),
 		UserID:        userID,
-		Type:          "text",
+		Type:          NewSecretType("text"),
 		Name:          "to-delete",
 		EncryptedData: []byte("data"),
 		Version:       1,
@@ -329,7 +334,7 @@ func TestStorage_UnsyncedSecrets(t *testing.T) {
 	syncedSecret := &SecretData{
 		ID:            uuid.New(),
 		UserID:        userID,
-		Type:          "text",
+		Type:          NewSecretType("text"),
 		Name:          "synced",
 		EncryptedData: []byte("data"),
 		Version:       1,
@@ -344,7 +349,7 @@ func TestStorage_UnsyncedSecrets(t *testing.T) {
 	unsyncedSecret := &SecretData{
 		ID:            uuid.New(),
 		UserID:        userID,
-		Type:          "text",
+		Type:          NewSecretType("text"),
 		Name:          "unsynced",
 		EncryptedData: []byte("data"),
 		Version:       1,
@@ -372,7 +377,7 @@ func TestStorage_MarkSynced(t *testing.T) {
 	secret := &SecretData{
 		ID:            uuid.New(),
 		UserID:        userID,
-		Type:          "text",
+		Type:          NewSecretType("text"),
 		Name:          "to-mark-synced",
 		EncryptedData: []byte("data"),
 		Version:       1,
@@ -406,7 +411,7 @@ func TestStorage_ClearAllSecrets(t *testing.T) {
 		secret := &SecretData{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "secret-" + string(rune('a'+i)),
 			EncryptedData: []byte("data"),
 			Version:       1,
@@ -438,7 +443,7 @@ func TestStorage_SaveSecrets(t *testing.T) {
 		{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "batch-1",
 			EncryptedData: []byte("data1"),
 			Version:       1,
@@ -448,7 +453,7 @@ func TestStorage_SaveSecrets(t *testing.T) {
 		{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "login_password",
+			Type:          NewSecretType("login_password"),
 			Name:          "batch-2",
 			EncryptedData: []byte("data2"),
 			Version:       1,
@@ -542,7 +547,7 @@ func TestStorage_SaveSecrets_WithDeletedAt(t *testing.T) {
 		{
 			ID:            uuid.New(),
 			UserID:        userID,
-			Type:          "text",
+			Type:          NewSecretType("text"),
 			Name:          "deleted-batch",
 			EncryptedData: []byte("data"),
 			Version:       1,
@@ -625,7 +630,7 @@ func TestStorage_GetToken_Error(t *testing.T) {
 	defer ts.Cleanup()
 
 	// Make tokenFile point to a directory instead of file to cause read error
-	err := os.MkdirAll(ts.tokenFile, 0700)
+	err := os.MkdirAll(ts.TokenStore.tokenFile, 0700)
 	require.NoError(t, err)
 
 	_, err = ts.GetToken()
@@ -637,7 +642,7 @@ func TestStorage_SaveMasterKey_Error(t *testing.T) {
 	defer ts.Cleanup()
 
 	// Make keychainFile point to a directory to cause write error
-	err := os.MkdirAll(ts.keychainFile, 0700)
+	err := os.MkdirAll(ts.KeyStore.keychainFile, 0700)
 	require.NoError(t, err)
 
 	key := []byte("0123456789abcdef0123456789abcdef")
@@ -650,7 +655,7 @@ func TestStorage_GetMasterKey_DecodeError(t *testing.T) {
 	defer ts.Cleanup()
 
 	// Write invalid base64 to keychain file
-	err := os.WriteFile(ts.keychainFile, []byte("not-valid-base64!!!"), 0600)
+	err := os.WriteFile(ts.KeyStore.keychainFile, []byte("not-valid-base64!!!"), 0600)
 	require.NoError(t, err)
 
 	_, err = ts.GetMasterKey("password")

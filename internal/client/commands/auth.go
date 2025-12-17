@@ -224,7 +224,7 @@ func performSync() error {
 	for i, s := range unsyncedSecrets {
 		syncSecrets[i] = api.SyncSecretRequest{
 			ID:            s.ID.String(),
-			Type:          s.Type,
+			Type:          s.Type.String(),
 			Name:          s.Name,
 			EncryptedData: s.EncryptedData,
 			Metadata:      s.Metadata,
@@ -279,7 +279,7 @@ func performSync() error {
 // apiResponseToStorage converts API response to storage format.
 func apiResponseToStorage(s api.SecretResponse) *storage.SecretData {
 	secret := &storage.SecretData{
-		Type:          s.Type,
+		Type:          storage.NewSecretType(s.Type),
 		Name:          s.Name,
 		EncryptedData: s.EncryptedData,
 		Metadata:      s.Metadata,

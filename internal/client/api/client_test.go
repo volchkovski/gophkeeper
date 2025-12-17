@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	client := NewClient("http://localhost:8080", 30*time.Second)
+	client := NewClient("http://localhost:8080", WithTimeout(30*time.Second))
 
 	require.NotNil(t, client)
 	assert.Equal(t, "http://localhost:8080", client.baseURL)
@@ -23,7 +23,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestClient_SetToken(t *testing.T) {
-	client := NewClient("http://localhost:8080", 30*time.Second)
+	client := NewClient("http://localhost:8080", WithTimeout(30*time.Second))
 	client.SetToken("test-token")
 
 	assert.Equal(t, "test-token", client.token)
@@ -40,7 +40,7 @@ func TestClient_Health(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		health, err := client.Health()
 
 		require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestClient_Health(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		health, err := client.Health()
 
 		require.NoError(t, err) // Health still decodes but may have error status
@@ -77,7 +77,7 @@ func TestClient_Version(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		version, err := client.Version()
 
 		require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestClient_Register(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.Register("testuser", "password123")
 
 		require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestClient_Register(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.Register("existinguser", "password123")
 
 		require.Error(t, err)
@@ -148,7 +148,7 @@ func TestClient_Login(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.Login("testuser", "password123")
 
 		require.NoError(t, err)
@@ -166,7 +166,7 @@ func TestClient_Login(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.Login("testuser", "wrongpassword")
 
 		require.Error(t, err)
@@ -193,7 +193,7 @@ func TestClient_RefreshToken(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.RefreshToken("old-refresh-token")
 
 		require.NoError(t, err)
@@ -208,7 +208,7 @@ func TestClient_RefreshToken(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.RefreshToken("invalid-token")
 
 		require.Error(t, err)
@@ -239,7 +239,7 @@ func TestClient_CreateSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.CreateSecret("login_password", "my-secret", []byte("encrypted"), "metadata")
@@ -256,7 +256,7 @@ func TestClient_CreateSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.CreateSecret("login_password", "existing", []byte("encrypted"), "")
@@ -283,7 +283,7 @@ func TestClient_GetSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.GetSecret(secretID)
@@ -300,7 +300,7 @@ func TestClient_GetSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.GetSecret(secretID)
@@ -325,7 +325,7 @@ func TestClient_ListSecrets(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.ListSecrets()
@@ -341,7 +341,7 @@ func TestClient_ListSecrets(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.ListSecrets()
@@ -366,7 +366,7 @@ func TestClient_UpdateSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.UpdateSecret(secretID, "text", "updated-secret", []byte("new-data"), "")
@@ -384,7 +384,7 @@ func TestClient_UpdateSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.UpdateSecret(secretID, "text", "secret", []byte("data"), "")
@@ -405,7 +405,7 @@ func TestClient_DeleteSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		err := client.DeleteSecret(secretID)
@@ -421,7 +421,7 @@ func TestClient_DeleteSecret(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		err := client.DeleteSecret(secretID)
@@ -444,7 +444,7 @@ func TestClient_Sync(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.Sync([]SyncSecretRequest{
@@ -462,7 +462,7 @@ func TestClient_Sync(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("test-token")
 
 		resp, err := client.Sync([]SyncSecretRequest{})
@@ -480,7 +480,7 @@ func TestClient_doRequest(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, err := client.doRequest("GET", "/test", nil)
 
 		require.NoError(t, err)
@@ -495,7 +495,7 @@ func TestClient_doRequest(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		client.SetToken("my-token")
 		resp, err := client.doRequest("GET", "/test", nil)
 
@@ -512,7 +512,7 @@ func TestClient_parseError(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, _ := client.doRequest("GET", "/test", nil)
 		err := client.parseError(resp)
 
@@ -527,7 +527,7 @@ func TestClient_parseError(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewClient(server.URL, 5*time.Second)
+		client := NewClient(server.URL, WithTimeout(5*time.Second))
 		resp, _ := client.doRequest("GET", "/test", nil)
 		err := client.parseError(resp)
 

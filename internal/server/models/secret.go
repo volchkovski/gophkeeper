@@ -69,3 +69,8 @@ func (s *SecretData) IncrementVersion() {
 	s.UpdatedAt = time.Now()
 }
 
+// GetID returns the secret's ID (implements Entity interface for generic repository).
+func (s *SecretData) GetID() uuid.UUID {
+	return s.ID
+}
+

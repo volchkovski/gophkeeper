@@ -19,13 +19,55 @@ type Client struct {
 	token      string
 }
 
-// NewClient creates a new API client.
-func NewClient(baseURL string, timeout time.Duration) *Client {
+// clientConfig holds configuration for Client.
+type clientConfig struct {
+	timeout   time.Duration
+	transport http.RoundTripper
+}
+
+// defaultConfig returns default client configuration.
+func defaultConfig() *clientConfig {
+	return &clientConfig{
+		timeout:   30 * time.Second,
+		transport: nil,
+	}
+}
+
+// Option is a generic functional option type for configuring Client.
+type Option[T any] func(*T)
+
+// ClientOption is an option for configuring Client.
+type ClientOption = Option[clientConfig]
+
+// WithTimeout sets the HTTP client timeout.
+func WithTimeout(timeout time.Duration) ClientOption {
+	return func(c *clientConfig) {
+		c.timeout = timeout
+	}
+}
+
+// WithTransport sets a custom HTTP transport.
+func WithTransport(transport http.RoundTripper) ClientOption {
+	return func(c *clientConfig) {
+		c.transport = transport
+	}
+}
+
+// NewClient creates a new API client with functional options.
+func NewClient(baseURL string, opts ...ClientOption) *Client {
+	cfg := defaultConfig()
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	httpClient := &http.Client{
+		Timeout:   cfg.timeout,
+		Transport: cfg.transport,
+	}
+
 	return &Client{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+		baseURL:    baseURL,
+		httpClient: httpClient,
 	}
 }
 

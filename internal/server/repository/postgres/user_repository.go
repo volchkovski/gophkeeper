@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -11,14 +9,22 @@ import (
 	"github.com/volchkovski/gophkeeper/internal/server/models"
 )
 
+const (
+	usersTable   = "users"
+	usersColumns = "id, username, password_hash, created_at, updated_at"
+)
+
 // UserRepository implements repository.UserRepository for PostgreSQL.
+// It embeds GenericRepository for common CRUD operations.
 type UserRepository struct {
-	db *DB
+	*GenericRepository[models.User, *models.User]
 }
 
 // NewUserRepository creates a new UserRepository.
 func NewUserRepository(db *DB) *UserRepository {
-	return &UserRepository{db: db}
+	return &UserRepository{
+		GenericRepository: NewGenericRepository[models.User, *models.User](db, usersTable, usersColumns),
+	}
 }
 
 // Create creates a new user record.
@@ -28,7 +34,7 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 		VALUES ($1, $2, $3, $4, $5)
 	`
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := r.ExecContext(ctx, query,
 		user.ID,
 		user.Username,
 		user.PasswordHash,
@@ -48,42 +54,30 @@ func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
 
 // FindByUsername retrieves a user by username.
 func (r *UserRepository) FindByUsername(ctx context.Context, username string) (*models.User, error) {
-	query := `
-		SELECT id, username, password_hash, created_at, updated_at
-		FROM users
-		WHERE username = $1
-	`
+	query := fmt.Sprintf("SELECT %s FROM %s WHERE username = $1", usersColumns, usersTable)
 
-	var user models.User
-	err := r.db.GetContext(ctx, &user, query, username)
+	user, err := r.FindOneByQuery(ctx, query, username)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperrors.ErrUserNotFound
-		}
 		return nil, fmt.Errorf("failed to find user by username: %w", err)
 	}
+	if user == nil {
+		return nil, apperrors.ErrUserNotFound
+	}
 
-	return &user, nil
+	return user, nil
 }
 
 // FindByID retrieves a user by ID.
 func (r *UserRepository) FindByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
-	query := `
-		SELECT id, username, password_hash, created_at, updated_at
-		FROM users
-		WHERE id = $1
-	`
-
-	var user models.User
-	err := r.db.GetContext(ctx, &user, query, id)
+	user, err := r.GenericRepository.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, apperrors.ErrUserNotFound
-		}
 		return nil, fmt.Errorf("failed to find user by id: %w", err)
 	}
+	if user == nil {
+		return nil, apperrors.ErrUserNotFound
+	}
 
-	return &user, nil
+	return user, nil
 }
 
 // Update updates user information.
@@ -94,7 +88,7 @@ func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
 		WHERE id = $1
 	`
 
-	result, err := r.db.ExecContext(ctx, query,
+	result, err := r.ExecContext(ctx, query,
 		user.ID,
 		user.Username,
 		user.PasswordHash,

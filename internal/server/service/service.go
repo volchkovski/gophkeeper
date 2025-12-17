@@ -29,17 +29,8 @@ type AuthService interface {
 	ValidateToken(token string) (*Claims, error)
 }
 
-// SecretService handles CRUD operations for secrets.
-type SecretService interface {
-	// Create creates a new secret for the user.
-	Create(ctx context.Context, userID uuid.UUID, secret *models.SecretData) error
-
-	// Update updates an existing secret.
-	Update(ctx context.Context, userID uuid.UUID, secret *models.SecretData) error
-
-	// Delete performs soft delete on a secret.
-	Delete(ctx context.Context, userID uuid.UUID, secretID uuid.UUID) error
-
+// SecretReader handles read operations for secrets (Interface Segregation).
+type SecretReader interface {
 	// Get retrieves a secret by ID.
 	Get(ctx context.Context, userID uuid.UUID, secretID uuid.UUID) (*models.SecretData, error)
 
@@ -48,9 +39,32 @@ type SecretService interface {
 
 	// List retrieves all secrets for a user.
 	List(ctx context.Context, userID uuid.UUID) ([]*models.SecretData, error)
+}
 
+// SecretWriter handles write operations for secrets (Interface Segregation).
+type SecretWriter interface {
+	// Create creates a new secret for the user.
+	Create(ctx context.Context, userID uuid.UUID, secret *models.SecretData) error
+
+	// Update updates an existing secret.
+	Update(ctx context.Context, userID uuid.UUID, secret *models.SecretData) error
+
+	// Delete performs soft delete on a secret.
+	Delete(ctx context.Context, userID uuid.UUID, secretID uuid.UUID) error
+}
+
+// SecretSyncer handles sync operations for secrets (Interface Segregation).
+type SecretSyncer interface {
 	// Sync synchronizes secrets between client and server.
 	Sync(ctx context.Context, userID uuid.UUID, clientSecrets []*models.SecretData) (*SyncResult, error)
+}
+
+// SecretService handles all CRUD and sync operations for secrets.
+// It composes SecretReader, SecretWriter, and SecretSyncer interfaces.
+type SecretService interface {
+	SecretReader
+	SecretWriter
+	SecretSyncer
 }
 
 // TokenPair contains access and refresh tokens.
