@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: gophkeeper-db
+    environment:
+      POSTGRES_DB: gophkeeper
+      POSTGRES_USER: gophkeeper
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gophkeeper -d gophkeeper"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: gophkeeper-server
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PORT: "8080"
+      DATABASE_DSN: "postgres://gophkeeper:secret@postgres:5432/gophkeeper?sslmode=disable"
+      JWT_SECRET: "your-super-secret-jwt-key-change-in-production"
+      LOG_LEVEL: "info"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  migrate:
+    image: migrate/migrate
+    container_name: gophkeeper-migrate
+    volumes:
+      - ./migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://gophkeeper:secret@postgres:5432/gophkeeper?sslmode=disable", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: gophkeeper-network
+
